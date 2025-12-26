@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <tuple>
+
 namespace stdx::details {
 
 // Класс для хранения ошибки неуспешного сканирования
@@ -11,8 +14,12 @@ struct scan_error {
 // Шаблонный класс для хранения результатов успешного сканирования
 
 template <typename... Ts>
-struct scan_result {
-    // здесь ваш код
+class scan_result {
+public:
+    std::tuple<Ts...> &values() { return res_; }
+
+private:
+    std::tuple<Ts...> res_;
 };
 
-} // namespace stdx::details
+}  // namespace stdx::details

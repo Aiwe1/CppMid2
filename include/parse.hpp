@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdlib>
 #include <expected>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -10,18 +12,74 @@
 
 namespace stdx::details {
 
-// здесь ваш код
+template <typename T>
+std::expected<T, scan_error> parse_value(std::string_view input, std::string_view fmt) {
+    if constexpr (std::is_integral_v<T>) {
+        if (!fmt.empty() && (fmt != "%d") && (fmt != "%u")) {
+            return std::unexpected(scan_error("Incorrect format(need int)"));
+        }
+        T res = 0;
+        res = std::atoi(input.data());
+        if ((res == 0) && (input.size() == 1 && input.data()[0] == '0')) {
+            return res;
+        }
 
-// Функция для парсинга значения с учетом спецификатора формата
+        if constexpr (std::is_unsigned_v<T>) {
+            if (!fmt.empty() && fmt != "%u") {
+                return std::unexpected(scan_error("Incorrect format(need uint)"));
+            }
+            if (input[0] == '-')
+                return std::unexpected(scan_error("Incorret value UINT"));
+        }
+
+        return res;
+    } else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+        if (!fmt.empty() && fmt != "%f") {
+            return std::unexpected(scan_error("Incorrect format(need double or float)"));
+        }
+        double res = 0.0;
+        res = std::atof(input.data());
+
+        if constexpr (std::is_same_v<T, float>) {
+            float res_f = std::atof(input.data());
+            if (static_cast<double>(res_f) < res - 0.00005 || static_cast<double>(res_f) > res + 0.00005) {
+                return std::unexpected(scan_error("Incorrect format(float)"));
+            }
+        }
+
+        if (res != 0.0 || input == "0.0")
+            return res;
+
+        return std::unexpected(scan_error("Incorret value DOUBLE"));
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        if (!fmt.empty() && fmt != "%s") {
+            return std::unexpected(scan_error("Incorret value STRING"));
+        }
+        std::string res(input);
+        if (res.empty())
+            return std::unexpected(scan_error("Incorret value STR"));
+        return res;
+    } else if constexpr (std::is_same_v<T, std::string_view>) {
+        if (!fmt.empty() && fmt != "%s") {
+            return std::unexpected(scan_error("Incorret value STRING_VIEW"));
+        }
+        if (input.empty())
+            return std::unexpected(scan_error("Incorret value STR_VIEW"));
+        return input;
+    }
+    return std::unexpected(scan_error("Incorret value"));
+}
+
 template <typename T>
 std::expected<T, scan_error> parse_value_with_format(std::string_view input, std::string_view fmt) {
-    // здесь ваш код
+    return parse_value<T>(input, fmt);
 }
 
 // Функция для проверки корректности входных данных и выделения из обеих строк интересующих данных для парсинга
 template <typename... Ts>
 std::expected<std::pair<std::vector<std::string_view>, std::vector<std::string_view>>, scan_error>
 parse_sources(std::string_view input, std::string_view format) {
+
     std::vector<std::string_view> format_parts;  // Части формата между {}
     std::vector<std::string_view> input_parts;
     size_t start = 0;
@@ -35,8 +93,6 @@ parse_sources(std::string_view input, std::string_view format) {
             break;
         }
 
-        // Если между предыдущей } и текущей { есть текст,
-        // проверяем его наличие во входной строке
         if (open > start) {
             std::string_view between = format.substr(start, open - start);
             auto pos = input.find(between);
@@ -50,12 +106,10 @@ parse_sources(std::string_view input, std::string_view format) {
             input = input.substr(pos + between.size());
         }
 
-        // Сохраняем спецификатор формата (то, что между {})
         format_parts.push_back(format.substr(open + 1, close - open - 1));
         start = close + 1;
     }
 
-    // Проверяем оставшийся текст после последней }
     if (start < format.size()) {
         std::string_view remaining_format = format.substr(start);
         auto pos = input.find(remaining_format);
@@ -67,7 +121,8 @@ parse_sources(std::string_view input, std::string_view format) {
     } else {
         input_parts.emplace_back(input);
     }
+
     return std::pair{format_parts, input_parts};
 }
 
-} // namespace stdx::details
+}  // namespace stdx::details
