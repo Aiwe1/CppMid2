@@ -1,5 +1,6 @@
 #pragma once
 
+#include <charconv>
 #include <cstdlib>
 #include <expected>
 #include <string>
@@ -13,60 +14,32 @@
 namespace stdx::details {
 
 template <typename T>
+    requires(std::is_integral_v<T> || std::is_same_v<T, float> || std::is_same_v<T, double> ||
+             std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>)
 std::expected<T, scan_error> parse_value(std::string_view input, std::string_view fmt) {
-    if constexpr (std::is_integral_v<T>) {
-        if (!fmt.empty() && (fmt != "%d") && (fmt != "%u")) {
+    if constexpr (std::is_integral_v<T> || std::is_same_v<T, float> || std::is_same_v<T, double>) {
+        if (!fmt.empty() && (fmt != "%d") && (fmt != "%u") && (fmt != "%f")) {
             return std::unexpected(scan_error("Incorrect format(need int)"));
         }
-        T res = 0;
-        res = std::atoi(input.data());
-        if ((res == 0) && (input.size() == 1 && input.data()[0] == '0')) {
-            return res;
-        }
+        T res;
 
-        if constexpr (std::is_unsigned_v<T>) {
-            if (!fmt.empty() && fmt != "%u") {
-                return std::unexpected(scan_error("Incorrect format(need uint)"));
-            }
-            if (input[0] == '-')
-                return std::unexpected(scan_error("Incorret value UINT"));
-        }
+        auto [ptr, ec] = std::from_chars(input.data(), input.data() + input.size(), res);
+        if (ec == std::errc::invalid_argument)
+            return std::unexpected(scan_error("invalid_argument"));
+        if (ec == std::errc::result_out_of_range)
+            return std::unexpected(scan_error("Result out of range"));
 
         return res;
-    } else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
-        if (!fmt.empty() && fmt != "%f") {
-            return std::unexpected(scan_error("Incorrect format(need double or float)"));
-        }
-        double res = 0.0;
-        res = std::atof(input.data());
-
-        if constexpr (std::is_same_v<T, float>) {
-            float res_f = std::atof(input.data());
-            if (static_cast<double>(res_f) < res - 0.00005 || static_cast<double>(res_f) > res + 0.00005) {
-                return std::unexpected(scan_error("Incorrect format(float)"));
-            }
-        }
-
-        if (res != 0.0 || input == "0.0")
-            return res;
-
-        return std::unexpected(scan_error("Incorret value DOUBLE"));
-    } else if constexpr (std::is_same_v<T, std::string>) {
+    } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
         if (!fmt.empty() && fmt != "%s") {
             return std::unexpected(scan_error("Incorret value STRING"));
         }
-        std::string res(input);
+        T res(input);
         if (res.empty())
             return std::unexpected(scan_error("Incorret value STR"));
         return res;
-    } else if constexpr (std::is_same_v<T, std::string_view>) {
-        if (!fmt.empty() && fmt != "%s") {
-            return std::unexpected(scan_error("Incorret value STRING_VIEW"));
-        }
-        if (input.empty())
-            return std::unexpected(scan_error("Incorret value STR_VIEW"));
-        return input;
     }
+
     return std::unexpected(scan_error("Incorret value"));
 }
 
@@ -79,7 +52,6 @@ std::expected<T, scan_error> parse_value_with_format(std::string_view input, std
 template <typename... Ts>
 std::expected<std::pair<std::vector<std::string_view>, std::vector<std::string_view>>, scan_error>
 parse_sources(std::string_view input, std::string_view format) {
-
     std::vector<std::string_view> format_parts;  // Части формата между {}
     std::vector<std::string_view> input_parts;
     size_t start = 0;
